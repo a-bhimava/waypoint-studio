@@ -1,2 +1,6 @@
-node_modules/\ndist/\ndata.db\n*.db-journal\n.DS_Store
+node_modules/
+dist/
+data.db
+*.db-journal
+.DS_Store
 .vercel

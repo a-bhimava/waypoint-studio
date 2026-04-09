@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import {
   Settings, Eye, Download, Compass, Share2, Plus,
   ChevronUp, ChevronDown, Trash2, MapPin, LogOut, User,
+  Maximize2, Map as MapIcon, Satellite, Moon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -18,6 +19,13 @@ import { MapEditor } from "@/components/map-editor";
 import { WaypointEditor } from "@/components/waypoint-editor";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { ShareDialog } from "@/components/share-dialog";
+import { PlaceSearch, reverseGeocode } from "@/components/place-search";
+
+const STYLE_OPTIONS = [
+  { id: "standard", icon: MapIcon, label: "Map", style: "mapbox://styles/mapbox/standard" },
+  { id: "satellite", icon: Satellite, label: "Satellite", style: "mapbox://styles/mapbox/satellite-streets-v12" },
+  { id: "dark", icon: Moon, label: "Dark", style: "mapbox://styles/mapbox/dark-v11" },
+];
 
 import {
   useProject,
@@ -83,21 +91,32 @@ export default function Builder() {
 
   // ── Handlers ─────────────────────────────────────
   const addWaypoint = useCallback(
-    (lng: number, lat: number) => {
+    (lng: number, lat: number, name?: string) => {
       const map = mapRef.current;
+      const label = name || `Waypoint ${waypoints.length + 1}`;
       createWp.mutate(
         {
-          lng,
-          lat,
-          label: `Waypoint ${waypoints.length + 1}`,
+          lng, lat, label,
           cameraZoom: map?.getZoom() ?? 17,
           cameraPitch: map?.getPitch() ?? 68,
           cameraBearing: map?.getBearing() ?? 0,
         },
-        { onSuccess: (wp) => setSelectedId(wp.id) }
+        {
+          onSuccess: (wp) => {
+            setSelectedId(wp.id);
+            // Auto-name via reverse geocode if no name was provided
+            if (!name && project?.mapboxToken) {
+              reverseGeocode(lng, lat, project.mapboxToken).then((placeName) => {
+                if (placeName && placeName !== "New Place") {
+                  updateWp.mutate({ id: wp.id, data: { label: placeName } });
+                }
+              });
+            }
+          },
+        }
       );
     },
-    [waypoints.length, createWp]
+    [waypoints.length, createWp, updateWp, project?.mapboxToken]
   );
 
   const handleMapClick = useCallback(
@@ -166,6 +185,37 @@ export default function Builder() {
     setSelectedId(null);
     deleteWp.mutate(id);
   };
+
+  // Fit map to show all waypoints
+  const handleFitAll = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || waypoints.length === 0) return;
+    if (waypoints.length === 1) {
+      map.flyTo({ center: [waypoints[0].lng, waypoints[0].lat], zoom: 15, duration: 1200 });
+      return;
+    }
+    const bounds = new mapboxgl.LngLatBounds();
+    waypoints.forEach((wp) => bounds.extend([wp.lng, wp.lat]));
+    map.fitBounds(bounds, { padding: 80, duration: 1200 });
+  }, [waypoints]);
+
+  // Place search: add waypoint at searched location
+  const handlePlaceSelect = useCallback(
+    (name: string, lng: number, lat: number) => {
+      const map = mapRef.current;
+      if (map) map.flyTo({ center: [lng, lat], zoom: 16, duration: 1500 });
+      addWaypoint(lng, lat, name);
+    },
+    [addWaypoint]
+  );
+
+  // Quick map style change
+  const handleStyleChange = useCallback(
+    (style: string) => {
+      updateProject.mutate({ mapStyle: style });
+    },
+    [updateProject]
+  );
 
   // ── Loading ──────────────────────────────────────
   if (projectLoading) {
@@ -262,9 +312,51 @@ export default function Builder() {
           <TooltipContent>Add waypoint at map center</TooltipContent>
         </Tooltip>
 
+        {/* Place search */}
+        {project?.mapboxToken && (
+          <PlaceSearch token={project.mapboxToken} onSelect={handlePlaceSelect} />
+        )}
+
+        {/* Spacer + right-side controls */}
+        <div className="ml-auto flex items-center gap-1 shrink-0 pl-3 border-l border-border">
+          {/* Fit all */}
+          {waypoints.length > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleFitAll}>
+                  <Maximize2 className="w-3 h-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Fit all waypoints</TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Map style toggle */}
+          <div className="flex items-center rounded-md border border-border overflow-hidden">
+            {STYLE_OPTIONS.map((opt) => (
+              <Tooltip key={opt.id}>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => handleStyleChange(opt.style)}
+                    className={cn(
+                      "h-6 w-7 flex items-center justify-center transition-colors",
+                      project?.mapStyle === opt.style
+                        ? "bg-primary/20 text-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                    )}
+                  >
+                    <opt.icon className="w-3 h-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{opt.label}</TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        </div>
+
         {/* Reorder & delete for selected waypoint */}
         {selectedId && (
-          <div className="ml-auto flex items-center gap-0.5 shrink-0 pl-3 border-l border-border">
+          <div className="flex items-center gap-0.5 shrink-0 pl-2 border-l border-border">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleMoveUp} disabled={selectedIdx <= 0}>

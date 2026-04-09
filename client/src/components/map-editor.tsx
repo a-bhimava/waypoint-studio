@@ -132,6 +132,29 @@ export function MapEditor({
       onClickRef.current(e.lngLat.lng, e.lngLat.lat);
     });
 
+    // Add route line source + layer once the style is loaded
+    const addRouteLine = () => {
+      if (map.getSource("route")) return;
+      map.addSource("route", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id: "route-line",
+        type: "line",
+        source: "route",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#4f98a3",
+          "line-width": 2.5,
+          "line-opacity": 0.5,
+          "line-dasharray": [2, 3],
+        },
+      });
+    };
+    map.on("style.load", addRouteLine);
+    if (map.isStyleLoaded()) addRouteLine();
+
     return () => {
       markersRef.current.forEach((m) => m.remove());
       markersRef.current.clear();
@@ -140,10 +163,22 @@ export function MapEditor({
     };
   }, [token, mapStyle]);
 
-  // Sync markers with waypoint data
+  // Sync markers + route line with waypoint data
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+
+    // Update route line
+    if (map.getSource("route") && waypoints.length >= 2) {
+      const coords = waypoints.map((wp) => [wp.lng, wp.lat]);
+      (map.getSource("route") as any).setData({
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: coords },
+        properties: {},
+      });
+    } else if (map.getSource("route")) {
+      (map.getSource("route") as any).setData({ type: "FeatureCollection", features: [] });
+    }
 
     const waypointMap = new Map(waypoints.map((w) => [w.id, w]));
 
