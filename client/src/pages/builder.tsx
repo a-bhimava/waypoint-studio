@@ -3,14 +3,16 @@ import { AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
 import {
   Settings, Eye, Download, Compass, Share2, Plus,
-  ChevronUp, ChevronDown, Trash2, MapPin,
+  ChevronUp, ChevronDown, Trash2, MapPin, LogOut, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-store";
 
 import { MapEditor } from "@/components/map-editor";
 import { WaypointEditor } from "@/components/waypoint-editor";
@@ -39,6 +41,7 @@ export default function Builder() {
   const [shareOpen, setShareOpen] = useState(false);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const { toast } = useToast();
+  const { user, signOut, isAuthEnabled } = useAuth();
 
   const { data: project, isLoading: projectLoading } = useProject();
   const { data: waypoints = [] } = useWaypoints();
@@ -56,6 +59,18 @@ export default function Builder() {
   useEffect(() => {
     if (project && !project.mapboxToken) setSettingsOpen(true);
   }, [project?.mapboxToken]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Escape: deselect waypoint
+      if (e.key === "Escape" && selectedId && !settingsOpen && !previewOpen && !shareOpen) {
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedId, settingsOpen, previewOpen, shareOpen]);
 
   // Resize map when bottom panel appears/disappears
   useEffect(() => {
@@ -194,6 +209,24 @@ export default function Builder() {
           <Button size="sm" className="h-8 gap-1.5 text-xs ml-1" onClick={() => setShareOpen(true)} data-testid="button-share">
             <Share2 className="w-3.5 h-3.5" /> Share
           </Button>
+
+          {isAuthEnabled && user && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 ml-1 rounded-full" data-testid="button-user-menu">
+                  <User className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                  {user.email}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => signOut()} className="text-xs gap-2">
+                  <LogOut className="w-3 h-3" /> Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
@@ -261,7 +294,7 @@ export default function Builder() {
       </div>
 
       {/* ═══ Map Area ═════════════════════════════ */}
-      <div className="relative flex-1 min-h-[40vh]">
+      <div className="relative flex-1 min-h-0 overflow-hidden">
         <MapEditor
           token={project?.mapboxToken ?? ""}
           mapStyle={project?.mapStyle ?? "mapbox://styles/mapbox/standard"}
