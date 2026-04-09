@@ -19,6 +19,7 @@ import { ShareDialog } from "@/components/share-dialog";
 
 import {
   useProject,
+  useUpdateProject,
   useWaypoints,
   useCreateWaypoint,
   useUpdateWaypoint,
@@ -42,6 +43,7 @@ export default function Builder() {
   const { data: project, isLoading: projectLoading } = useProject();
   const { data: waypoints = [] } = useWaypoints();
 
+  const updateProject = useUpdateProject();
   const createWp = useCreateWaypoint();
   const updateWp = useUpdateWaypoint();
   const deleteWp = useDeleteWaypoint();
@@ -272,6 +274,7 @@ export default function Builder() {
           }}
           waypoints={waypoints}
           selectedId={selectedId}
+          onTokenSave={(t) => updateProject.mutate({ mapboxToken: t })}
           onMapClick={handleMapClick}
           onSelectWaypoint={setSelectedId}
           onMarkerDrag={handleMarkerDrag}
