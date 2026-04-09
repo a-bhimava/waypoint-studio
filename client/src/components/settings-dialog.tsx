@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUpdateProject } from "@/lib/hooks";
-import type { Project, InsertProject } from "@shared/schema";
+import type { Project, InsertProject } from "@/lib/data-store";
 
 const MAP_STYLES = [
   { value: "mapbox://styles/mapbox/standard", label: "Standard" },

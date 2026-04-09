@@ -1,13 +1,5 @@
 {
   "buildCommand": "npx vite build",
   "outputDirectory": "dist/public",
-  "installCommand": "npm install",
-  "functions": {
-    "api/**/*.ts": {
-      "includeFiles": "server/**,shared/**"
-    }
-  },
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/index.ts" }
-  ]
+  "installCommand": "npm install"
 }

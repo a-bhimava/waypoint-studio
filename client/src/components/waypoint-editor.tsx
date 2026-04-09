@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Waypoint, InsertWaypoint } from "@shared/schema";
+import type { Waypoint, InsertWaypoint } from "@/lib/data-store";
 
 interface WaypointEditorProps {
   waypoint: Waypoint;

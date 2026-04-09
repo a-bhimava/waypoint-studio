@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Copy, Check, Share2, ExternalLink } from "lucide-react";
+import { Copy, Check, Share2, Download, ExternalLink } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,8 +8,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { getShareUrl } from "@/lib/hooks";
+import { useProject, useWaypoints, downloadExport, generatePreviewHtml } from "@/lib/hooks";
 
 interface ShareDialogProps {
   open: boolean;
@@ -18,22 +17,28 @@ interface ShareDialogProps {
 }
 
 export function ShareDialog({ open, onOpenChange, waypointCount }: ShareDialogProps) {
-  const [copied, setCopied] = useState(false);
-  const shareUrl = getShareUrl();
+  const { data: project } = useProject();
+  const { data: waypoints = [] } = useWaypoints();
+  const [exporting, setExporting] = useState(false);
 
-  const handleCopy = async () => {
+  const handleExportZip = async () => {
+    if (!project) return;
+    setExporting(true);
     try {
-      await navigator.clipboard.writeText(shareUrl);
-    } catch {
-      const input = document.createElement("input");
-      input.value = shareUrl;
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand("copy");
-      document.body.removeChild(input);
+      await downloadExport(project, waypoints);
+    } finally {
+      setExporting(false);
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+  };
+
+  const handleOpenPreview = () => {
+    if (!project) return;
+    const html = generatePreviewHtml(project, waypoints);
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    // Clean up after a delay
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
   return (
@@ -46,52 +51,46 @@ export function ShareDialog({ open, onOpenChange, waypointCount }: ShareDialogPr
           </DialogTitle>
           <DialogDescription className="text-xs">
             {waypointCount > 0
-              ? `Your journey with ${waypointCount} waypoint${waypointCount !== 1 ? "s" : ""} is ready to share.`
-              : "Add some waypoints first, then share your journey with the world."}
+              ? `Your journey with ${waypointCount} waypoint${waypointCount !== 1 ? "s" : ""} is ready.`
+              : "Add some waypoints first to share your journey."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 pt-1">
-          {/* Copy link */}
-          <div className="flex gap-2">
-            <Input
-              value={shareUrl}
-              readOnly
-              className="font-mono text-[11px] h-9 bg-muted/30"
-              data-testid="input-share-url"
-            />
-            <Button
-              onClick={handleCopy}
-              className="shrink-0 gap-1.5 h-9"
-              data-testid="button-copy-link"
-            >
-              {copied ? (
-                <Check className="w-3.5 h-3.5" />
-              ) : (
-                <Copy className="w-3.5 h-3.5" />
-              )}
-              {copied ? "Copied" : "Copy Link"}
-            </Button>
-          </div>
-
-          {/* Open link */}
-          <a
-            href={shareUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-primary underline underline-offset-2 flex items-center gap-1 w-fit"
+        <div className="space-y-4 pt-2">
+          {/* Preview in new tab */}
+          <Button
+            variant="outline"
+            className="w-full justify-start gap-3 h-12"
+            onClick={handleOpenPreview}
+            disabled={waypointCount === 0 || !project?.mapboxToken}
           >
-            Open in new tab
-            <ExternalLink className="w-3 h-3" />
-          </a>
+            <ExternalLink className="w-4 h-4 text-primary" />
+            <div className="text-left">
+              <div className="text-sm font-medium">Open Live Preview</div>
+              <div className="text-[10px] text-muted-foreground">View the full scrollytelling experience in a new tab</div>
+            </div>
+          </Button>
+
+          {/* Export ZIP */}
+          <Button
+            variant="outline"
+            className="w-full justify-start gap-3 h-12"
+            onClick={handleExportZip}
+            disabled={waypointCount === 0 || exporting}
+          >
+            <Download className="w-4 h-4 text-primary" />
+            <div className="text-left">
+              <div className="text-sm font-medium">
+                {exporting ? "Generating..." : "Download as Website"}
+              </div>
+              <div className="text-[10px] text-muted-foreground">Export a ZIP you can host anywhere (Vercel, Netlify, etc.)</div>
+            </div>
+          </Button>
 
           {/* Explanation */}
-          <div className="bg-muted/30 rounded-lg px-4 py-3 space-y-2">
+          <div className="bg-muted/30 rounded-lg px-4 py-3">
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Anyone with this link can view your scrollytelling experience. The link always reflects the latest version of your project.
-            </p>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Want a standalone website? Use the "Export" button to download a ZIP you can host anywhere.
+              The exported ZIP contains a complete static website — just upload it to any hosting service. Your Mapbox token, waypoints, descriptions, and photos are all included.
             </p>
           </div>
         </div>

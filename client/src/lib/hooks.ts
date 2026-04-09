@@ -1,102 +1,167 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient, API_BASE } from "./queryClient";
-import type { Project, InsertProject, Waypoint, InsertWaypoint } from "@shared/schema";
+import { useCallback } from "react";
+import { useDataStore } from "./data-store";
+import type { Project, Waypoint, InsertProject, InsertWaypoint } from "./data-store";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
+import { ENGINE_CSS, ENGINE_JS, ENGINE_HTML_HEAD, ENGINE_HTML_BODY } from "./templates";
+
+// Re-export types so existing imports still work
+export type { Project, Waypoint, InsertProject, InsertWaypoint };
 
 // ── Project ──────────────────────────────────────
 export function useProject() {
-  return useQuery<Project>({ queryKey: ["/api/project"] });
+  const { project } = useDataStore();
+  return { data: project, isLoading: false };
 }
 
 export function useUpdateProject() {
-  return useMutation({
-    mutationFn: async (data: Partial<InsertProject>) => {
-      const res = await apiRequest("PUT", "/api/project", data);
-      return (await res.json()) as Project;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/project"] });
-    },
-  });
+  const { updateProject } = useDataStore();
+  return {
+    mutate: (data: Partial<InsertProject>) => updateProject(data),
+    isPending: false,
+  };
 }
 
 // ── Waypoints ────────────────────────────────────
 export function useWaypoints() {
-  return useQuery<Waypoint[]>({ queryKey: ["/api/waypoints"] });
+  const { waypoints } = useDataStore();
+  return { data: waypoints, isLoading: false };
 }
 
 export function useCreateWaypoint() {
-  return useMutation({
-    mutationFn: async (data: Partial<InsertWaypoint>) => {
-      const res = await apiRequest("POST", "/api/waypoints", data);
-      return (await res.json()) as Waypoint;
+  const { createWaypoint } = useDataStore();
+  return {
+    mutate: (
+      data: Partial<InsertWaypoint>,
+      options?: { onSuccess?: (wp: Waypoint) => void }
+    ) => {
+      const wp = createWaypoint(data);
+      options?.onSuccess?.(wp);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/waypoints"] });
-    },
-  });
+    isPending: false,
+  };
 }
 
 export function useUpdateWaypoint() {
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<InsertWaypoint> }) => {
-      const res = await apiRequest("PUT", `/api/waypoints/${id}`, data);
-      return (await res.json()) as Waypoint;
+  const { updateWaypoint } = useDataStore();
+  return {
+    mutate: ({ id, data }: { id: number; data: Partial<InsertWaypoint> }) => {
+      updateWaypoint(id, data);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/waypoints"] });
-    },
-  });
+    isPending: false,
+  };
 }
 
 export function useDeleteWaypoint() {
-  return useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/waypoints/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/waypoints"] });
-    },
-  });
+  const { deleteWaypoint } = useDataStore();
+  return {
+    mutate: (id: number) => deleteWaypoint(id),
+    isPending: false,
+  };
 }
 
 export function useReorderWaypoints() {
-  return useMutation({
-    mutationFn: async (order: number[]) => {
-      const res = await apiRequest("POST", "/api/waypoints/reorder", { order });
-      return (await res.json()) as Waypoint[];
+  const { reorderWaypoints } = useDataStore();
+  return {
+    mutate: (order: number[]) => reorderWaypoints(order),
+    isPending: false,
+  };
+}
+
+// ── Config generation (shared by export + preview) ──
+function generateConfigJs(project: Project, wps: Waypoint[]): string {
+  const waypoints = wps.map((wp) => ({
+    id: wp.label.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    coords: { lng: wp.lng, lat: wp.lat },
+    camera: { zoom: wp.cameraZoom, pitch: wp.cameraPitch, bearing: wp.cameraBearing },
+    label: wp.label,
+    description: wp.description,
+    image: wp.imageUrl || "",
+    theme: wp.theme,
+    ...(wp.isFinal ? { isFinal: true } : {}),
+  }));
+
+  return `const WAYPOINT_CONFIG = ${JSON.stringify(
+    {
+      mapbox: {
+        accessToken: project.mapboxToken || "YOUR_MAPBOX_TOKEN_HERE",
+        style: project.mapStyle,
+        initialView: {
+          lng: project.initialLng,
+          lat: project.initialLat,
+          zoom: project.initialZoom,
+          pitch: project.initialPitch,
+          bearing: project.initialBearing,
+        },
+      },
+      settings: {
+        scrollPerSegment: project.scrollPerSegment,
+        easeDuration: 180,
+        preloaderText: "Loading your journey…",
+        preloaderDuration: 2200,
+      },
+      waypoints,
+      finale: {
+        headline: project.finaleHeadline,
+        subtext: project.finaleSubtext,
+        tagline: project.finaleTagline,
+      },
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/waypoints"] });
-    },
-  });
+    null,
+    2
+  )};\n`;
 }
 
-// ── Export ────────────────────────────────────────
-export async function downloadExport(projectName: string) {
-  const res = await apiRequest("GET", "/api/export");
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${projectName.replace(/\s+/g, "-").toLowerCase()}.zip`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+// ── Preview HTML (generated client-side) ─────────
+export function generatePreviewHtml(project: Project, waypoints: Waypoint[]): string {
+  const configJs = generateConfigJs(project, waypoints);
+  return `<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>${project.name} — Preview</title>
+${ENGINE_HTML_HEAD}
+<style>${ENGINE_CSS}</style>
+</head><body>
+${ENGINE_HTML_BODY}
+<script>${configJs}</script>
+<script>${ENGINE_JS}</script>
+</body></html>`;
 }
 
-// ── Preview URL ──────────────────────────────────
-export function getPreviewUrl() {
-  return `${API_BASE}/api/preview`;
+// ── Export ZIP (generated client-side) ────────────
+export async function downloadExport(project: Project, waypoints: Waypoint[]) {
+  const configJs = generateConfigJs(project, waypoints);
+  const zip = new JSZip();
+  zip.file("config.js", configJs);
+  zip.file("style.css", ENGINE_CSS);
+  zip.file("engine.js", ENGINE_JS);
+  zip.file(
+    "index.html",
+    `<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>${project.name}</title>
+${ENGINE_HTML_HEAD}
+<link rel="stylesheet" href="style.css" />
+<script src="config.js"><\/script>
+</head><body>
+${ENGINE_HTML_BODY}
+<script src="engine.js"><\/script>
+</body></html>`
+  );
+  zip.folder("images");
+  const blob = await zip.generateAsync({ type: "blob" });
+  saveAs(blob, `${project.name.replace(/\s+/g, "-").toLowerCase()}.zip`);
 }
 
-// ── Shareable URL (full, including origin) ───────
+// ── Preview URL is no longer needed — we use srcdoc ──
+export function getPreviewUrl(): string {
+  return ""; // Unused; builder uses generatePreviewHtml + srcdoc instead
+}
+
+// ── Share URL ────────────────────────────────────
+// In client-only mode there is no server preview endpoint.
+// The share dialog explains this and points to Export instead.
 export function getShareUrl(): string {
-  if (API_BASE) {
-    return `${API_BASE}/api/preview`;
-  }
-  if (typeof window !== "undefined") {
-    return `${window.location.origin}/api/preview`;
-  }
-  return "/api/preview";
+  return typeof window !== "undefined" ? window.location.href : "";
 }

@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useState } from "react";
-import type { Waypoint } from "@shared/schema";
+import type { Waypoint } from "@/lib/data-store";
 import { MapPin, ArrowRight } from "lucide-react";
 
 // mapbox-gl is loaded via CDN in index.html

@@ -26,7 +26,7 @@ import {
   useDeleteWaypoint,
   useReorderWaypoints,
   downloadExport,
-  getPreviewUrl,
+  generatePreviewHtml,
 } from "@/lib/hooks";
 
 // mapbox-gl loaded via CDN
@@ -124,12 +124,12 @@ export default function Builder() {
   const handleExport = useCallback(async () => {
     if (!project) return;
     try {
-      await downloadExport(project.name);
+      await downloadExport(project, waypoints);
       toast({ title: "Export complete", description: "ZIP downloaded successfully" });
     } catch {
       toast({ title: "Export failed", variant: "destructive" });
     }
-  }, [project, toast]);
+  }, [project, waypoints, toast]);
 
   const handleMoveUp = () => {
     if (selectedIdx <= 0) return;
@@ -284,7 +284,7 @@ export default function Builder() {
         {/* Onboarding: no waypoints yet */}
         {waypoints.length === 0 && project?.mapboxToken && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-            <div className="glass-panel px-8 py-6 text-center pointer-events-auto max-w-xs">
+            <div className="glass-panel px-8 py-6 text-center max-w-xs">
               <MapPin className="w-10 h-10 mx-auto mb-4 text-primary opacity-80" />
               <p className="text-sm font-medium mb-1">Click anywhere on the map</p>
               <p className="text-xs text-muted-foreground leading-relaxed mb-4">
@@ -343,11 +343,12 @@ export default function Builder() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <span className="text-sm font-semibold">Preview — Scroll to explore your journey</span>
           </div>
-          {previewOpen && (
+          {previewOpen && project && (
             <iframe
-              src={`${getPreviewUrl()}?t=${Date.now()}`}
+              srcDoc={generatePreviewHtml(project, waypoints)}
               className="w-full border-0"
               style={{ height: "calc(85vh - 49px)" }}
+              sandbox="allow-scripts allow-same-origin"
               title="Preview"
               data-testid="preview-iframe"
             />
